@@ -1,18 +1,7 @@
-# SSDG
-The implementation of [**Single-Side Domain Generalization for Face Anti-Spoofing**](https://arxiv.org/abs/2004.14043).
-
-The motivation of the proposed SSDG method:
-<div align=center>
-<img src="https://github.com/taylover-pei/SSDG-CVPR2020/blob/master/article/motivation.png" width="400" height="296" />
-</div>
-
-An overview of the proposed SSDG method:
-
-<div align=center>
-<img src="https://github.com/taylover-pei/SSDG-CVPR2020/blob/master/article/architecture.png" width="700" height="345" />
-</div>
+## 
 
 ## Congifuration Environment
+- có thể dùng trình conda để quản lý môi trường và dùng wsl
 - python 3.6 
 - pytorch 0.4 
 - torchvision 0.2
@@ -32,6 +21,7 @@ To be specific, we process every frame of each video and then utilize the `sampl
 
 Put the processed frames in the path `$root/data/dataset_name`.
 
+**bước này đã làm xong và lưu ở data_label**
 **Data Label Generation.** 
 
 Move to the `$root/data_label` and generate the data label list:
@@ -55,16 +45,37 @@ Run like this:
 python dg_test.py
 ```
 
-## Citation
-Please cite our paper if the code is helpful to your research.
+# các việc cần làm bây giờ 
+
+## Lý do:
+Ta chỉ có 3/4 bộ datasets nên ta cần modify lại các hàm ở bước training và testing sao cho thích ứng với 3 bộ dataset đó
+
+## Các bước làm 
+### Download 3 bộ datasets đó thông qua drive
+
+#### Cách 1: Tải về Server Linux / Colab (Khuyên dùng cho AI)
+Dùng wget hoặc curl để tải link Google Drive thường hay bị lỗi (do cơ chế xác thực virus scan với file lớn). Công cụ chuẩn nhất là gdown.
+
+Người dùng kia cần làm:
+
+##### 1. Cài đặt gdown Chạy lệnh sau trên server để cài công cụ (yêu cầu server đã có Python/Pip):
+
+```Bash
+pip install gdown
 ```
-@InProceedings{Jia_2020_CVPR_SSDG,
-    author = {Yunpei Jia and Jie Zhang and Shiguang Shan and Xilin Chen},
-    title = {Single-Side Domain Generalization for Face Anti-Spoofing},
-    booktitle = {Proc. IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
-    year = {2020}
-}
+##### 2. Chạy lệnh tải folder Sử dụng lệnh sau để tải toàn bộ folder về. Lưu ý tham số --folder là bắt buộc vì đây là tải thư mục.
+
+```Bash
+gdown https://drive.google.com/drive/folders/1y1RCZfVSbCRSsc7r5BYaQb4-V4GTofvT -O ./Ten_Folder_Muon_Luu --folder
 ```
+
+-O ./Ten_Folder_Muon_Luu: Đặt tên cho thư mục sẽ lưu trên server (ví dụ: dataset_CVPR).
+
+--folder: Báo cho gdown biết đây là link folder chứ không phải file lẻ.
+#### Cách 2: Tải về máy tính cá nhân (Windows/Mac)
+Tải data từ đường link: https://drive.google.com/drive/folders/1y1RCZfVSbCRSsc7r5BYaQb4-V4GTofvT
+
+Nhấn nút Download trên trình duyệt.
 
 
 
