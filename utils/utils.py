@@ -29,11 +29,13 @@ def draw_roc(frr_list, far_list, roc_auc):
     plt.grid(ls='--')
     plt.ylabel('False Negative Rate')
     plt.xlabel('False Positive Rate')
-    save_dir = './save_results/ROC/'
+    # Make ROC save path repo-relative and platform-independent
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    save_dir = os.path.join(repo_root, 'save_results', 'ROC')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    plt.savefig('./save_results/ROC/ROC.png')
-    file = open('./save_results/ROC/FAR_FRR.txt', 'w')
+    plt.savefig(os.path.join(save_dir, 'ROC.png'))
+    file = open(os.path.join(save_dir, 'FAR_FRR.txt'), 'w')
     save_json = []
     dict = {}
     dict['FAR'] = far_list
@@ -46,35 +48,50 @@ def sample_frames(flag, num_frames, dataset_name):
         from every video (frames) to sample num_frames to test
         return: the choosen frames' path and label
     '''
-    # The process is a litter cumbersome, you can change to your way for convenience
-    root_path = '../../data_label/' + dataset_name
+    # Use repo-relative paths for platform independence
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    root_path = os.path.join(repo_root, 'data_label', dataset_name)
     if(flag == 0): # select the fake images
-        label_path = root_path + '/fake_label.json'
-        save_label_path = root_path + '/choose_fake_label.json'
+        label_path = os.path.join(root_path, 'fake_label.json')
+        save_label_path = os.path.join(root_path, 'choose_fake_label.json')
     elif(flag == 1): # select the real images
-        label_path = root_path + '/real_label.json'
-        save_label_path = root_path + '/choose_real_label.json'
+        label_path = os.path.join(root_path, 'real_label.json')
+        save_label_path = os.path.join(root_path, 'choose_real_label.json')
     else: # select all the real and fake images
-        label_path = root_path + '/all_label.json'
-        save_label_path = root_path + '/choose_all_label.json'
+        label_path = os.path.join(root_path, 'all_label.json')
+        save_label_path = os.path.join(root_path, 'choose_all_label.json')
 
     all_label_json = json.load(open(label_path, 'r'))
     f_sample = open(save_label_path, 'w')
     length = len(all_label_json)
-    # three componets: frame_prefix, frame_num, png
-    saved_frame_prefix = '/'.join(all_label_json[0]['photo_path'].split('/')[:-1])
+    # three components: frame_prefix, frame_num, png
+    # Normalize incoming JSON paths (use forward slashes for portability)
+    first_photo_path = all_label_json[0]['photo_path'].replace('\\', '/')
+    saved_frame_prefix = '/'.join(first_photo_path.split('/')[:-1])
     final_json = []
     video_number = 0
     single_video_frame_list = []
     single_video_frame_num = 0
     single_video_label = 0
     for i in range(length):
-        photo_path = all_label_json[i]['photo_path']
+        # Normalize incoming path from JSON (replace backslashes with forward slashes)
+        photo_path = all_label_json[i]['photo_path'].replace('\\', '/')
         photo_label = all_label_json[i]['photo_label']
         frame_prefix = '/'.join(photo_path.split('/')[:-1])
+        # Extract frame number from filename (format: ..._{frame}_{label}.jpg)
+        filename = photo_path.split('/')[-1]
+        # Split by underscore and get the part before '_fake' or '_real'
+        parts = filename.split('_')
+        # The frame number is typically before the label (fake/real)
+        photo_frame_str = parts[-2] if parts[-1].startswith('fake') or parts[-1].startswith('real') else parts[-1].split('.')[0]
+        try:
+            photo_frame = int(photo_frame_str)
+        except (ValueError, IndexError):
+            # Fallback: use index as frame number
+            photo_frame = i
+        
         # the last frame
         if (i == length - 1):
-            photo_frame = int(photo_path.split('/')[-1].split('.')[0])
             single_video_frame_list.append(photo_frame)
             single_video_frame_num += 1
             single_video_label = photo_label
@@ -85,8 +102,10 @@ def sample_frames(flag, num_frames, dataset_name):
             frame_interval = math.floor(single_video_frame_num / num_frames)
             for j in range(num_frames):
                 dict = {}
+                # Bounds-safe frame index selection
+                frame_idx = min(len(single_video_frame_list) - 1, 6 + j * frame_interval)
                 dict['photo_path'] = saved_frame_prefix + '/' + str(
-                    single_video_frame_list[6 + j * frame_interval]) + '.png'
+                    single_video_frame_list[frame_idx]) + '.png'
                 dict['photo_label'] = single_video_label
                 dict['photo_belong_to_video_ID'] = video_number
                 final_json.append(dict)
@@ -95,7 +114,6 @@ def sample_frames(flag, num_frames, dataset_name):
             single_video_frame_list.clear()
             single_video_frame_num = 0
         # get every frame information
-        photo_frame = int(photo_path.split('/')[-1].split('.')[0])
         single_video_frame_list.append(photo_frame)
         single_video_frame_num += 1
         single_video_label = photo_label

@@ -135,11 +135,15 @@ def resnet18(pretrained=False, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
     model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
-    # change your path
-    model_path = '/home/jiayunpei/SSDG_github/pretrained_model/resnet18-5c106cde.pth'
+    # Make model path platform-independent using repo-relative resolution
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    model_path = os.path.join(repo_root, 'pretrained_model', 'resnet18-5c106cde.pth')
     if pretrained:
-        model.load_state_dict(torch.load(model_path))
-        print("loading model: ", model_path)
+        if os.path.exists(model_path):
+            model.load_state_dict(torch.load(model_path, map_location='cpu'))
+            print("loading model: ", model_path)
+        else:
+            print("Pretrained model not found at:", model_path)
     # print(model)
     return model
 
