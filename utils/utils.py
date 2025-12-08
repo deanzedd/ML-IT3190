@@ -64,59 +64,76 @@ def sample_frames(flag, num_frames, dataset_name):
     all_label_json = json.load(open(label_path, 'r'))
     f_sample = open(save_label_path, 'w')
     length = len(all_label_json)
-    # three components: frame_prefix, frame_num, png
-    # Normalize incoming JSON paths (use forward slashes for portability)
-    first_photo_path = all_label_json[0]['photo_path'].replace('\\', '/')
-    saved_frame_prefix = '/'.join(first_photo_path.split('/')[:-1])
+    
     final_json = []
     video_number = 0
     single_video_frame_list = []
-    single_video_frame_num = 0
     single_video_label = 0
+    saved_frame_prefix = None
+    
     for i in range(length):
         # Normalize incoming path from JSON (replace backslashes with forward slashes)
-        photo_path = all_label_json[i]['photo_path'].replace('\\', '/')
+        photo_path_orig = all_label_json[i]['photo_path'].replace('\\', '/')
         photo_label = all_label_json[i]['photo_label']
-        frame_prefix = '/'.join(photo_path.split('/')[:-1])
-        # Extract frame number from filename (format: ..._{frame}_{label}.jpg)
-        filename = photo_path.split('/')[-1]
-        # Split by underscore and get the part before '_fake' or '_real'
-        parts = filename.split('_')
-        # The frame number is typically before the label (fake/real)
-        photo_frame_str = parts[-2] if parts[-1].startswith('fake') or parts[-1].startswith('real') else parts[-1].split('.')[0]
-        try:
-            photo_frame = int(photo_frame_str)
-        except (ValueError, IndexError):
-            # Fallback: use index as frame number
-            photo_frame = i
+        
+        # Extract directory prefix (everything before the filename) and filename
+        frame_prefix = '/'.join(photo_path_orig.split('/')[:-1])
+        filename = photo_path_orig.split('/')[-1]
+        
+        # If this is the first item or we're in a new video (different prefix)
+        if saved_frame_prefix is None:
+            saved_frame_prefix = frame_prefix
         
         # the last frame
         if (i == length - 1):
-            single_video_frame_list.append(photo_frame)
-            single_video_frame_num += 1
+            single_video_frame_list.append((filename, photo_label))
             single_video_label = photo_label
+        
         # a new video, so process the saved one
         if (frame_prefix != saved_frame_prefix or i == length - 1):
-            # [1, 2, 3, 4,.....]
-            single_video_frame_list.sort()
-            frame_interval = math.floor(single_video_frame_num / num_frames)
+            # Sample num_frames evenly from the video frames
+            frame_count = len(single_video_frame_list)
+            frame_interval = max(1, frame_count // num_frames)
+            
             for j in range(num_frames):
                 dict = {}
                 # Bounds-safe frame index selection
-                frame_idx = min(len(single_video_frame_list) - 1, 6 + j * frame_interval)
-                dict['photo_path'] = saved_frame_prefix + '/' + str(
-                    single_video_frame_list[frame_idx]) + '.png'
-                dict['photo_label'] = single_video_label
-                dict['photo_belong_to_video_ID'] = video_number
-                final_json.append(dict)
+                frame_idx = min(frame_count - 1, 6 + j * frame_interval)
+                selected_filename = single_video_frame_list[frame_idx][0]
+                
+                # Extract relative path from the frame_prefix (Linux path like /home/.../data/origin/CASIA-FASD/...)
+                # Find 'data/origin' in the path and use everything after that
+                path_parts = saved_frame_prefix.split('/')
+                try:
+                    data_idx = path_parts.index('data')
+                    origin_idx = data_idx + 1
+                    if origin_idx < len(path_parts) and path_parts[origin_idx] == 'origin':
+                        # Rebuild using everything from 'data/origin' onwards
+                        relative_path_parts = path_parts[data_idx:]
+                        full_frame_path = os.path.join(repo_root, *relative_path_parts, selected_filename)
+                    else:
+                        raise ValueError("Could not find 'data/origin' in path")
+                except (ValueError, IndexError):
+                    # Fallback: should not happen with valid datasets
+                    print(f"Warning: Could not parse frame_prefix: {saved_frame_prefix}")
+                    full_frame_path = None
+                
+                if full_frame_path:
+                    # Normalize path separators for the current OS
+                    dict['photo_path'] = os.path.normpath(full_frame_path)
+                    dict['photo_label'] = single_video_label
+                    dict['photo_belong_to_video_ID'] = video_number
+                    final_json.append(dict)
+            
             video_number += 1
             saved_frame_prefix = frame_prefix
             single_video_frame_list.clear()
-            single_video_frame_num = 0
-        # get every frame information
-        single_video_frame_list.append(photo_frame)
-        single_video_frame_num += 1
+            single_video_label = 0
+        
+        # Add to current video's frame list
+        single_video_frame_list.append((filename, photo_label))
         single_video_label = photo_label
+    
     if(flag == 0):
         print("Total video number(fake): ", video_number, dataset_name)
     elif(flag == 1):
