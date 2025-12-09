@@ -45,7 +45,7 @@ Run like this:
 python dg_test.py
 ```
 
-# các việc cần làm bây giờ 
+# các việc cần làm bây giờ (đã hoàn thành)
 
 ## Lý do:
 Ta chỉ có 3/4 bộ datasets nên ta cần modify lại các hàm ở bước training và testing sao cho thích ứng với 3 bộ dataset đó
@@ -78,5 +78,39 @@ Tải data từ đường link: https://drive.google.com/drive/folders/1y1RCZfVS
 Nhấn nút Download trên trình duyệt.
 
 
+## Update (25-12-09)
+#### Các module experment/scenario/
+- config.py
+    + Bỏ src dataset IDIAP
+- train_ssdg_full.py
+    + Sửa thành to(device) thay vì cuda()
+    + Bỏ dataset thứ 3
+- dg_test.py
+    + Sửa thành to(device) thay vì cuda()
+    + Kiểm tra checkpoint đã tồn tại chưa trước khi load
+    + Thêm weights_only=True
+    + Sửa avg_single_video_target thành mode (thay vì trung bình) label của các frame trong mỗi video (vì CrossEntropyLoss chỉ chấp nhận Long thay vì Float) và chỉnh lại dimension
+    + Trả về NaN AUC nếu test set chỉ có 1 class
 
+#### loss/
+- AdLoss.py
+    + Tạo hàm tổng quát để làm việc được với 2 dataset thay vì 3
+    + Sửa thành device thay vì cuda()
 
+#### models/
+- DGFAS.py
+    + Thêm weights_only=True
+    + Sửa deprecated code (sử dụng static forward method)
+
+#### utils/
+- dataset.py
+    + Chuyển ảnh thành RGB
+    + Resize về 256x256
+- evaluate.py
+    + Sửa thành to(device) thay vì cuda()
+    + Sửa avg_single_video_target thành mode (thay vì trung bình) label của các frame trong mỗi video (vì CrossEntropyLoss chỉ chấp nhận Long thay vì Float) và chỉnh lại dimension
+    + Trả về NaN AUC nếu test set chỉ có 1 class
+- get_loader.py
+    + Bỏ dataset thứ 3
+- utils.py
+    + Chỉnh cách đọc tên file cho đúng với cách sắp xếp và đặt tên file hiện tại

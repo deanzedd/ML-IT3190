@@ -17,9 +17,11 @@ def eval(valid_dataloader, model, norm_flag):
     output_dict_tmp = {}
     target_dict_tmp = {}
     with torch.no_grad():
+        # infer device from model parameters
+        model_device = next(model.parameters()).device
         for iter, (input, target, videoID) in enumerate(valid_dataloader):
-            input = Variable(input).cuda()
-            target = Variable(torch.from_numpy(np.array(target)).long()).cuda()
+            input = Variable(input).to(model_device)
+            target = Variable(torch.from_numpy(np.array(target)).long()).to(model_device)
             cls_out, feature = model(input, norm_flag)
             prob = F.softmax(cls_out, dim=1).cpu().data.numpy()[:, 1]
             label = target.cpu().data.numpy()
@@ -48,12 +50,26 @@ def eval(valid_dataloader, model, norm_flag):
         label_list = np.append(label_list, avg_single_video_label)
         # compute loss and acc for every video
         avg_single_video_output = sum(output_dict_tmp[key]) / len(output_dict_tmp[key])
-        avg_single_video_target = sum(target_dict_tmp[key]) / len(target_dict_tmp[key])
-        loss = criterion(avg_single_video_output, avg_single_video_target)
-        acc_valid = accuracy(avg_single_video_output, avg_single_video_target, topk=(1,))
+        # build a single integer target per video (most frequent frame label)
+        targets = torch.cat(target_dict_tmp[key], dim=0).view(-1)
+        if targets.numel() == 0:
+            avg_single_video_target = torch.tensor(0, dtype=torch.long, device=avg_single_video_output.device)
+        else:
+            # mode returns (values, indices); we want the most common value
+            mode_result = torch.mode(targets)
+            avg_single_video_target = mode_result.values if hasattr(mode_result, 'values') else mode_result[0]
+        # CrossEntropyLoss expects output [N, C] and target [N]
+        # avg_single_video_output is [1, 2] (already has batch dim), target is scalar
+        loss = criterion(avg_single_video_output, avg_single_video_target.unsqueeze(0))
+        acc_valid = accuracy(avg_single_video_output, avg_single_video_target.unsqueeze(0), topk=(1,))
         valid_losses.update(loss.item())
         valid_top1.update(acc_valid[0])
-    auc_score = roc_auc_score(label_list, prob_list)
+    # roc_auc_score is undefined when `label_list` contains only one class
+    if len(np.unique(label_list)) < 2:
+        auc_score = float('nan')
+    else:
+        auc_score = roc_auc_score(label_list, prob_list)
+
     cur_EER_valid, threshold, _, _ = get_EER_states(prob_list, label_list)
     ACC_threshold = calculate_threshold(prob_list, label_list, threshold)
     cur_HTER_valid = get_HTER_at_thr(prob_list, label_list, threshold)

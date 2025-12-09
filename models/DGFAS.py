@@ -4,6 +4,7 @@ from torchvision.models.resnet import ResNet, BasicBlock
 import sys
 import numpy as np
 from torch.autograd import Variable
+from torch.autograd import Function
 import random
 import os
 
@@ -135,11 +136,15 @@ def resnet18(pretrained=False, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
     model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
-    # change your path
-    model_path = '/home/jiayunpei/SSDG_github/pretrained_model/resnet18-5c106cde.pth'
+    # Make model path platform-independent using repo-relative resolution
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    model_path = os.path.join(repo_root, 'pretrained_model', 'resnet18-5c106cde.pth')
     if pretrained:
-        model.load_state_dict(torch.load(model_path))
-        print("loading model: ", model_path)
+        if os.path.exists(model_path):
+            model.load_state_dict(torch.load(model_path, map_location='cpu', weights_only=False))
+            print("loading model: ", model_path)
+        else:
+            print("Pretrained model not found at:", model_path)
     # print(model)
     return model
 
@@ -204,22 +209,26 @@ class Classifier(nn.Module):
             classifier_out = self.classifier_layer(input)
         return classifier_out
 
-class GRL(torch.autograd.Function):
-    def __init__(self):
-        self.iter_num = 0
-        self.alpha = 10
-        self.low = 0.0
-        self.high = 1.0
-        self.max_iter = 4000  # be same to the max_iter of config.py
+class GRL(Function):
+    # class-level scheduling parameters (persistent across calls)
+    iter_num = 0
+    alpha = 10.0
+    low = 0.0
+    high = 1.0
+    max_iter = 4000  # keep in sync with training config if changed
 
-    def forward(self, input):
-        self.iter_num += 1
-        return input * 1.0
+    @staticmethod
+    def forward(ctx, input):
+        GRL.iter_num += 1
+        # compute coefficient and save to ctx for backward
+        coeff = float(2.0 * (GRL.high - GRL.low) / (1.0 + np.exp(-GRL.alpha * GRL.iter_num / GRL.max_iter))
+                      - (GRL.high - GRL.low) + GRL.low)
+        ctx.coeff = coeff
+        return input.view_as(input)
 
-    def backward(self, gradOutput):
-        coeff = np.float(2.0 * (self.high - self.low) / (1.0 + np.exp(-self.alpha * self.iter_num / self.max_iter))
-                         - (self.high - self.low) + self.low)
-        return -coeff * gradOutput
+    @staticmethod
+    def backward(ctx, grad_output):
+        return -ctx.coeff * grad_output
 
 class Discriminator(nn.Module):
     def __init__(self):
@@ -236,10 +245,11 @@ class Discriminator(nn.Module):
             nn.Dropout(0.5),
             self.fc2
         )
-        self.grl_layer = GRL()
 
     def forward(self, feature):
-        adversarial_out = self.ad_net(self.grl_layer(feature))
+        # use new-style autograd Function
+        grl_feature = GRL.apply(feature)
+        adversarial_out = self.ad_net(grl_feature)
         return adversarial_out
 
 class DG_model(nn.Module):
@@ -265,9 +275,3 @@ if __name__ == '__main__':
     x = Variable(torch.ones(1, 3, 256, 256))
     model = DG_model()
     y, v = model(x, True)
-
-
-
-
-
-

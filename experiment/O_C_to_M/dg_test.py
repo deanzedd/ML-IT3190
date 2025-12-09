@@ -14,9 +14,16 @@ from utils.utils import AverageMeter, accuracy, draw_roc
 from utils.statistic import get_EER_states, get_HTER_at_thr, calculate, calculate_threshold
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 from models.DGFAS import DG_model
-import shutil
+import shutil 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = config.gpus
+# Determine device: use GPU if configured and available, else CPU
+gpus = getattr(config, 'gpus', '')
+if gpus and torch.cuda.is_available():
+    os.environ["CUDA_VISIBLE_DEVICES"] = gpus
+    device = 'cuda'
+else:
+    device = 'cpu'
+    print(f"Using device: {device}")
 
 def test(test_dataloader, model, threshold):
     valid_top1 = AverageMeter()
@@ -28,8 +35,8 @@ def test(test_dataloader, model, threshold):
     number = 0
     with torch.no_grad():
         for iter, (input, target, videoID) in enumerate(test_dataloader):
-            input = Variable(input).cuda()
-            target = Variable(torch.from_numpy(np.array(target)).long()).cuda()
+            input = Variable(input).to(device)
+            target = Variable(torch.from_numpy(np.array(target)).long()).to(device)
             cls_out, _ = model(input, config.norm_flag)
             prob = F.softmax(cls_out, dim=1).cpu().data.numpy()[:, 1]
             label = target.cpu().data.numpy()
@@ -62,25 +69,40 @@ def test(test_dataloader, model, threshold):
         label_list = np.append(label_list, avg_single_video_label)
         # compute loss and acc for every video
         avg_single_video_output = sum(output_dict_tmp[key]) / len(output_dict_tmp[key])
-        avg_single_video_target = sum(target_dict_tmp[key]) / len(target_dict_tmp[key])
-        acc_valid = accuracy(avg_single_video_output, avg_single_video_target, topk=(1,))
+        # build a single integer target per video (most frequent frame label)
+        targets = torch.cat(target_dict_tmp[key], dim=0).view(-1)
+        if targets.numel() == 0:
+            avg_single_video_target = torch.tensor(0, dtype=torch.long, device=avg_single_video_output.device)
+        else:
+            mode_result = torch.mode(targets)
+            avg_single_video_target = mode_result.values if hasattr(mode_result, 'values') else mode_result[0]
+        acc_valid = accuracy(avg_single_video_output, avg_single_video_target.unsqueeze(0), topk=(1,))
         valid_top1.update(acc_valid[0])
 
     cur_EER_valid, threshold, FRR_list, FAR_list = get_EER_states(prob_list, label_list)
     ACC_threshold = calculate_threshold(prob_list, label_list, threshold)
-    auc_score = roc_auc_score(label_list, prob_list)
-    draw_roc(FRR_list, FAR_list, auc_score)
+    # roc_auc_score is undefined when only one class is present in labels
+    if len(np.unique(label_list)) < 2:
+        auc_score = float('nan')
+    else:
+        auc_score = roc_auc_score(label_list, prob_list)
+        draw_roc(FRR_list, FAR_list, auc_score)
     cur_HTER_valid = get_HTER_at_thr(prob_list, label_list, threshold)
     return [valid_top1.avg, cur_EER_valid, cur_HTER_valid, auc_score, ACC_threshold, threshold]
 
 def main():
-    net = DG_model(config.model).cuda()
+    net = DG_model(config.model).to(device)
     test_data = sample_frames(flag=2, num_frames=config.tgt_test_num_frames, dataset_name=config.tgt_data)
     test_dataloader = DataLoader(YunpeiDataset(test_data, train=False), batch_size=1, shuffle=False)
     print('\n')
     print("**Testing** Get test files done!")
     # load model
-    net_ = torch.load(config.best_model_path + config.tgt_best_model_name)
+    ckpt_path = os.path.join(config.best_model_path, config.tgt_best_model_name)
+    if not os.path.exists(ckpt_path):
+        print(f"\n[INFO] Checkpoint not found at {ckpt_path}")
+        print("[INFO] Skipping test. Run training first to generate checkpoint.")
+        return
+    net_ = torch.load(ckpt_path, weights_only=False)
     net.load_state_dict(net_["state_dict"])
     threshold = net_["threshold"]
     # test model

@@ -10,8 +10,10 @@ class YunpeiDataset(Dataset):
         self.photo_label = data_pd['photo_label'].tolist()
         self.photo_belong_to_video_ID = data_pd['photo_belong_to_video_ID'].tolist()
         if transforms is None:
+            # Resize images to 256x256 (model expects 256x256 inputs)
             if not train:
                 self.transforms = T.Compose([
+                    T.Resize((256, 256)),
                     T.ToTensor(),
                     T.Normalize(mean=[0.485, 0.456, 0.406],
                                 std=[0.229, 0.224, 0.225])
@@ -19,6 +21,7 @@ class YunpeiDataset(Dataset):
             else:
                 self.transforms = T.Compose([
                     T.RandomHorizontalFlip(),
+                    T.Resize((256, 256)),
                     T.ToTensor(),
                     T.Normalize(mean=[0.485, 0.456, 0.406],
                                 std=[0.229, 0.224, 0.225])
@@ -33,13 +36,13 @@ class YunpeiDataset(Dataset):
         if self.train:
             img_path = self.photo_path[item]
             label = self.photo_label[item]
-            img = Image.open(img_path)
+            img = Image.open(img_path).convert('RGB')
             img = self.transforms(img)
             return img, label
         else:
             img_path = self.photo_path[item]
             label = self.photo_label[item]
             videoID = self.photo_belong_to_video_ID[item]
-            img = Image.open(img_path)
+            img = Image.open(img_path).convert('RGB')
             img = self.transforms(img)
             return img, label, videoID
